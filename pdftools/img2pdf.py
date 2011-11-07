@@ -7,22 +7,27 @@ Created by See-ming Lee on 2011-11-06.
 Copyright (c) 2011 See-ming Lee. All rights reserved.
 """
 from PIL import Image
-import getopt
+#import getopt
+import argparse
 from reportlab.pdfgen import canvas
 import os
 import os.path
 import sys
 
-__version__ = "0.1"
+__version__ = "0.2"
 
-def showVersion():
-	print('img2pdf v'+__version__+', by See-ming Lee:')
-	print('Convert images in folder to PDF document')
+def getVersion():
+	return '\n'.join([
+		'img2pdf v'+__version__+', by See-ming Lee:',
+		'Convert images in folder to PDF document'
+	])
 
-def showUsage():
-	print('')
-	showVersion()
-	print('''
+def getUsage():
+	return '\n'.join([
+		'',
+	    getVersion(),
+	    '',
+	    '''
 	Usage: img2pdf src dst
 	  -h, -?, --help        display this help information
 	  -V, --version         display version
@@ -36,7 +41,7 @@ def showUsage():
 	  compression: no
 	  verbose: no
 
-	''')
+	'''])
 
 class Img2PdfException(Exception):
 	pass
@@ -51,16 +56,25 @@ class img2pdf(object):
 
 	def __init__(self, folder, out_folder, pdfname=None, outline=True,
 	             verbose=False, compression=0, maxpages=None):
+		if folder is not None and hasattr(folder, '__iter__'):
+			folder = folder[0]
+		if out_folder is not None and hasattr(out_folder, '__iter__'):
+			out_folder = out_folder[0]
+
 		self.folder = self.getPath(folder, os.path.abspath('./'))
+		print (self.folder)
+
 		self.out_folder = self.getPath(out_folder, os.path.abspath('./'))
+		print(self.out_folder)
+
 		self.pdfname = pdfname
 		if self.pdfname is None:
 			self.pdfname = "%s.pdf" % (
 				self.folder.split('/')[-1]
 			)
-		self.pdfname = self.getRealNormAbsPath(
-			os.path.join(self.out_folder, self.pdfname)
-		)
+		self.pdfname = os.path.join(self.out_folder, self.pdfname)
+		print(self.pdfname)
+
 		self.compression = compression
 		self.images = []
 		self.canvas = canvas.Canvas(
@@ -171,47 +185,37 @@ class img2pdf(object):
 		return "\n".join(lines)
 
 def main():
-	# parse options
-	try:
-		opts, args = getopt.getopt(
-			sys.argv[1:], 'hV?n:ocv',
-			['help', 'version', 'name', 'no-outline', 'compression', 'verbose']
-		)
-	except getopt.GetoptError:
-		Img2PdfException()
-		return
-	# read src and dst folders
-	if len(args) < 2:
-		showUsage()
-		return
-	src, dst = args[0], args[1]
-	#option defaults
-	name, outline, compress, verbose_ = None, True, 0, False
-	#process options
-	for o, a in opts:
-		if o in ("-h", "--help", "-?"):
-			showUsage()
-			return
-		if o in ("-V", "--version"):
-			showVersion();
-			return
-		if o in ("-n", "--name"):
-			name = a
-		if o in ("-o", "--no-outline"):
-			outline = False
-		if o in ("-c", "--compression"):
-			compress = 1
-		if o in ("-v", "--verbose"):
-			verbose_ = True
-
-	pdf = img2pdf(
-		folder=src,
-		out_folder=dst,
-	    pdfname=name,
-	    outline=outline,
-	    compression=compress,
-	    verbose=verbose_
+	parser = argparse.ArgumentParser(
+		description="Create PDF from images.",
+		prefix_chars='-+'
 	)
+	parser.add_argument('folder', metavar='src', default='./',
+	                    help='source folder path')
+	parser.add_argument('out_folder', metavar='dst', default='./',
+	                    help='destination folder path')
+	parser.add_argument('--version', action='version', version=getVersion())
+	parser.add_argument('-n', '--name',
+	                    default=None, dest='pdfname',
+	                    help='name (not full path) of the generated pdf file.')
+	parser.add_argument('-o','--outline',
+	                    default=True, action='store_false', dest='outline',
+	                    help='include an outline as the TOC in PDF')
+	parser.add_argument('+o','++outline',
+	                    default=True, action='store_true', dest='outline',
+	                    help='include an outline as the TOC in PDF')
+	parser.add_argument('-c','--compression',
+	                    default=False, action='store_false', dest='compression',
+	                    help='use compression in pdf. Note: will make it very slow.')
+	parser.add_argument('+c','++compression',
+	                    default=False, action='store_true', dest='compression',
+	                    help='disable compression in pdf. Note: will make it very slow.')
+	parser.add_argument('-v','--verbose','+v','++verbose',
+	                    default=False, action='store_true', dest='verbose',
+	                    help='display more information on the process')
+	args = parser.parse_args()
+
+
+	pdf = img2pdf(**args.__dict__)
 	pdf.convert()
 
 if __name__ == '__main__':

@@ -9,4 +9,4 @@ Copyright (c) 2011 See-ming Lee. All rights reserved.
 __author__ = 'See-ming Lee'
 __email__ = 'seeminglee@gmail.com'
 
-from pdftools import *
+
