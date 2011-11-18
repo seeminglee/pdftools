@@ -7,83 +7,68 @@ Created by See-ming Lee on 2011-11-06.
 Copyright (c) 2011 See-ming Lee. All rights reserved.
 """
 from PIL import Image
-#import getopt
 import argparse
 from reportlab.pdfgen import canvas
 import os
 import os.path
-import sys
+import subprocess
 
 __version__ = "0.2"
 
 def getVersion():
 	return '\n'.join([
-		'img2pdf v'+__version__+', by See-ming Lee:',
+		'img2pdf v' + __version__ + ', by See-ming Lee:',
 		'Convert images in folder to PDF document'
 	])
 
-def getUsage():
-	return '\n'.join([
-		'',
-	    getVersion(),
-	    '',
-	    '''
-	Usage: img2pdf src dst
-	  -h, -?, --help        display this help information
-	  -V, --version         display version
-	  -n, --name            name of the pdf file
-	  -o, --no-outline      do not include outline
-	  -c, --compression     use compression
-	  -v, --verbose         verbose output
-
-	default values:
-	  outline: yes
-	  compression: no
-	  verbose: no
-
-	'''])
 
 class Img2PdfException(Exception):
 	pass
 
+
 class InvalidFolderException(Img2PdfException):
 	pass
-
 
 
 class img2pdf(object):
 	"""load images and create pdf"""
 
 	def __init__(self, folder, out_folder, pdfname=None, outline=True,
-	             verbose=False, compression=0, maxpages=None):
+	             verbose=False, compression=0, maxpages=None,
+	             pagesize_w='disabled', pagesize_h='disabled',
+	             openpdf=False):
 		if folder is not None and hasattr(folder, '__iter__'):
 			folder = folder[0]
 		if out_folder is not None and hasattr(out_folder, '__iter__'):
 			out_folder = out_folder[0]
 
 		self.folder = self.getPath(folder, os.path.abspath('./'))
-		print (self.folder)
 
 		self.out_folder = self.getPath(out_folder, os.path.abspath('./'))
-		print(self.out_folder)
 
 		self.pdfname = pdfname
 		if self.pdfname is None:
 			self.pdfname = "%s.pdf" % (
-				self.folder.split('/')[-1]
+			self.folder.split('/')[-1]
 			)
 		self.pdfname = os.path.join(self.out_folder, self.pdfname)
-		print(self.pdfname)
 
 		self.compression = compression
 		self.images = []
 		self.canvas = canvas.Canvas(
 			filename=self.pdfname,
 			pagesize=(600, 600),
-		    pageCompression=self.compression
+			pageCompression=self.compression
 		)
 		self.outline = outline
 		self.verbose = verbose
+		self.pagesize_w = pagesize_w
+		self.pagesize_h = pagesize_h
+		self.page_w_min = None
+		self.page_w_max = None
+		self.page_h_min = None
+		self.page_h_max = None
+		self.openpdf = openpdf
 		self.maxpages = maxpages
 
 	@classmethod
@@ -117,6 +102,11 @@ class img2pdf(object):
 		self.loadImages()
 		self.createPDF()
 		self.log(self)
+		print("PDF file created using the %d images from %s:\n%s" %
+		      (len(self.images), self.folder, self.pdfname)
+		)
+		if self.openpdf:
+			subprocess.call(['open', self.pdfname])
 
 	def loadImages(self):
 		"""load images from folder"""
@@ -135,18 +125,31 @@ class img2pdf(object):
 						"width": img.size[0],
 						"height": img.size[1]
 					})
+					if self.page_h_max is None:
+						self.page_h_max = img.size[1]
+						self.page_h_min = img.size[1]
+					self.page_h_max = max(self.page_h_max, img.size[1])
+					self.page_h_min = min(self.page_h_min, img.size[1])
 					self.log("image added: %s" % infile)
 				except IOError, err:
 					print ("%s %s" % (err, path))
 
 	def createPDF(self):
-		pagecount=1
+		pagecount = 1
 		for img in self.images:
 			self.log("processing page %d" % pagecount)
 			# image
 			p = img['path']
 			w = img['width']
 			h = img['height']
+			r = float(w) / float(h)
+			if self.pagesize_h == 'max':
+				h = self.page_h_max
+				w = r * h
+			elif self.pagesize_h == 'min':
+				h = self.page_h_min
+				w = r * h
+
 			self.canvas.setPageSize((w, h))
 			self.canvas.drawImage(p, 0, 0, width=w, height=h)
 			# outline
@@ -156,8 +159,8 @@ class img2pdf(object):
 				self.canvas.addOutlineEntry(
 					title="%s %dx%d" % (os.path.basename(p), w, h),
 					key=k,
-				    level=0,
-				    closed=0
+					level=0,
+					closed=0
 				)
 
 			self.canvas.showPage()
@@ -173,7 +176,7 @@ class img2pdf(object):
 	def __repr__(self):
 		return "\n".join([
 			"PDF object",
-		    ">>> Filename = %s" % self.pdfname
+			">>> Filename = %s" % self.pdfname
 		])
 
 	def imageList(self):
@@ -183,6 +186,7 @@ class img2pdf(object):
 				" ".join(["%s: %s" % (key, img[key]) for key in img.keys()])
 			)
 		return "\n".join(lines)
+
 
 def main():
 	parser = argparse.ArgumentParser(
@@ -197,23 +201,34 @@ def main():
 	parser.add_argument('-n', '--name',
 	                    default=None, dest='pdfname',
 	                    help='name (not full path) of the generated pdf file.')
-	parser.add_argument('-o','--outline',
+	parser.add_argument('-o', '--outline',
 	                    default=True, action='store_false', dest='outline',
 	                    help='include an outline as the TOC in PDF')
-	parser.add_argument('+o','++outline',
+	parser.add_argument('+o', '++outline',
 	                    default=True, action='store_true', dest='outline',
 	                    help='include an outline as the TOC in PDF')
-	parser.add_argument('-c','--compression',
-	                    default=False, action='store_false', dest='compression',
+	parser.add_argument('-c', '--compression',
+	                    default=False, action='store_false', dest='compression'
+	                    ,
 	                    help='use compression in pdf. Note: will make it very slow.')
-	parser.add_argument('+c','++compression',
+	parser.add_argument('+c', '++compression',
 	                    default=False, action='store_true', dest='compression',
 	                    help='disable compression in pdf. Note: will make it very slow.')
-	parser.add_argument('-v','--verbose','+v','++verbose',
+	parser.add_argument('-v', '--verbose', '+v', '++verbose',
 	                    default=False, action='store_true', dest='verbose',
 	                    help='display more information on the process')
+	parser.add_argument('--width', choices=['max', 'min', 'disabled'],
+	                    default='disabled', dest='pagesize_w',
+	                    help='use the minimum / maximum width as the page width for all pages.')
+	parser.add_argument('--height', choices=['max', 'min', 'disabled'],
+	                    default='disabled', dest='pagesize_h',
+	                    help='use the minimum / maximum height as the page height for all pages.')
+	parser.add_argument('--openpdf', dest='openpdf', default=False,
+	                    action='store_true',
+	                    help='open pdf file in default app after conversion completes.')
 	args = parser.parse_args()
 
+	print(args)
 
 	pdf = img2pdf(**args.__dict__)
 	pdf.convert()
