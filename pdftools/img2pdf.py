@@ -110,29 +110,31 @@ class img2pdf(object):
 
 	def loadImages(self):
 		"""load images from folder"""
-		files = os.listdir(self.folder)
-		for infile in files:
-			file, ext = os.path.splitext(infile)
-			ext = str.lower(ext)[1:]
-			if ext in ('jpg', 'jpeg', 'png', 'tif'):
-				path = os.path.abspath(
-					os.path.join(self.folder, infile)
-				)
-				try:
-					img = Image.open(path)
-					self.images.append({
-						"path": path,
-						"width": img.size[0],
-						"height": img.size[1]
-					})
-					if self.page_h_max is None:
-						self.page_h_max = img.size[1]
-						self.page_h_min = img.size[1]
-					self.page_h_max = max(self.page_h_max, img.size[1])
-					self.page_h_min = min(self.page_h_min, img.size[1])
-					self.log("image added: %s" % infile)
-				except IOError, err:
-					print ("%s %s" % (err, path))
+		# files = os.listdir(self.folder)
+		# load all images in folder instead of just top level
+		for root, dirs, files in os.walk(self.folder):
+			for infile in files:
+				file, ext = os.path.splitext(infile)
+				ext = str.lower(ext)[1:]
+				if ext in ('jpg', 'jpeg', 'png', 'tif', 'gif', 'tiff'):
+					path = os.path.abspath(
+						os.path.join(root, infile)
+					)
+					try:
+						img = Image.open(path)
+						self.images.append({
+							"path": path,
+							"width": img.size[0],
+							"height": img.size[1]
+						})
+						if self.page_h_max is None:
+							self.page_h_max = img.size[1]
+							self.page_h_min = img.size[1]
+						self.page_h_max = max(self.page_h_max, img.size[1])
+						self.page_h_min = min(self.page_h_min, img.size[1])
+						self.log("image added: %s" % infile)
+					except IOError, err:
+						print ("%s %s" % (err, path))
 
 	def createPDF(self):
 		pagecount = 1
@@ -221,8 +223,8 @@ def main():
 	                    default='disabled', dest='pagesize_w',
 	                    help='use the minimum / maximum width as the page width for all pages.')
 	parser.add_argument('--height', choices=['max', 'min', 'disabled'],
-	                    default='disabled', dest='pagesize_h',
-	                    help='use the minimum / maximum height as the page height for all pages.')
+	                    default='max', dest='pagesize_h',
+	                    help='use the minimum / maximum height as the page height for all pages.') #### DEFAULT: maxheight
 	parser.add_argument('--openpdf', dest='openpdf', default=False,
 	                    action='store_true',
 	                    help='open pdf file in default app after conversion completes.')
